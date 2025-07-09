@@ -9,7 +9,7 @@
 #include <QJsonArray>
 #include <QFile>
 #include <QDir>
-
+#include <QFileInfo>
 
 using namespace Eigen;
 
@@ -912,7 +912,6 @@ void SimplexSolver::dibujarGrafico() {
 
 
 void SimplexSolver::dibujarGrafico3D() {
-
     ui->stackedWidget->setCurrentWidget(ui->pagina3D);
 
     if (objetivo.size() != 3) {
@@ -971,9 +970,33 @@ void SimplexSolver::dibujarGrafico3D() {
     json["vertices"] = verticesJson;
 
     QJsonDocument doc(json);
-    std::string json_data_str = doc.toJson(QJsonDocument::Compact).toStdString();
 
-    QString rutaJson = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../datos_grafico3D.json");
+    QString pythonExecutablePath;
+    QString rutaScript;
+    QString dataDirPath;
+    QString rutaJson;
+
+    QString appDirPath = QCoreApplication::applicationDirPath();
+
+    QDir currentAppDir(appDirPath);
+    currentAppDir.cdUp();
+    currentAppDir.cdUp();
+
+    QString projectRootPath = currentAppDir.path();
+
+#ifdef Q_OS_WIN
+    pythonExecutablePath = QDir::cleanPath(projectRootPath + "/_python_env/Scripts/python.exe");
+    rutaScript = QDir::cleanPath(projectRootPath + "/grafico3D.py");
+    dataDirPath = QDir::cleanPath(projectRootPath + "/data");
+#else
+    pythonExecutablePath = QDir::cleanPath(projectRootPath + "/_python_env/bin/python");
+    rutaScript = QDir::cleanPath(projectRootPath + "/grafico3D.py");
+    dataDirPath = QDir::cleanPath(projectRootPath + "/data");
+#endif
+
+    QDir().mkpath(dataDirPath);
+    rutaJson = QDir::cleanPath(dataDirPath + "/datos_grafico3D.json");
+
     QFile archivo(rutaJson);
     if (!archivo.open(QIODevice::WriteOnly)) {
         qWarning() << "Could not write JSON file:" << rutaJson;
@@ -982,32 +1005,59 @@ void SimplexSolver::dibujarGrafico3D() {
     }
     archivo.write(doc.toJson());
     archivo.close();
-    QString pythonExecutable = "python";
-    QString rutaScript = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../grafico3D.py");
-    QString winIdStr = QString::number(reinterpret_cast<quintptr>(ui->contenedorPython3D->winId()));
+
+    qDebug() << "Calculated pythonExecutablePath:" << pythonExecutablePath;
+    qDebug() << "Calculated rutaScript:" << rutaScript;
+    qDebug() << "Calculated rutaJson:" << rutaJson;
 
     QStringList args;
-    args << rutaScript << rutaJson << winIdStr;
+    QString venvLibPath = QDir::cleanPath(projectRootPath + "/_python_env/Lib/site-packages");
+
+    args << "-S"
+         << "-E"
+         << "-c"
+         << QString("import sys; sys.path.insert(0, '%1'); import runpy; runpy.run_path('%2', run_name='__main__', init_globals=globals())")
+                .arg(venvLibPath)
+                .arg(rutaScript)
+         << rutaJson;
 
     QProcess *proceso = new QProcess(this);
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+#ifdef Q_OS_WIN
+    QString currentPath = env.value("PATH");
+    QString pythonDLLPath = QDir::cleanPath(projectRootPath + "/_python_env");
+    QString pythonScriptsPath = QDir::cleanPath(projectRootPath + "/_python_env/Scripts");
+    env.insert("PATH", pythonDLLPath + ";" + pythonScriptsPath + ";" + currentPath);
+#else
+    QString currentPath = env.value("PATH");
+    QString pythonBinPath = QDir::cleanPath(projectRootPath + "/_python_env/bin");
+    env.insert("PATH", pythonBinPath + ":" + currentPath);
+#endif
+    qDebug() << "Process environment PATH set to:" << env.value("PATH");
+    proceso->setProcessEnvironment(env);
+
     connect(proceso, &QProcess::readyReadStandardOutput, [proceso]() {
-        qDebug() << "stdout:" << proceso->readAllStandardOutput();
+        qDebug() << "stdout (Python):" << proceso->readAllStandardOutput();
     });
     connect(proceso, &QProcess::readyReadStandardError, [proceso]() {
-        qDebug() << "stderr:" << proceso->readAllStandardError();
+        qDebug() << "stderr (Python):" << proceso->readAllStandardError();
     });
     connect(proceso, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             [proceso](int exitCode, QProcess::ExitStatus status) {
+                qDebug() << "Python process finished with code:" << exitCode << "status:" << status;
+                if (exitCode != 0) {
+                    QMessageBox::critical(nullptr, "Python Script Error", "The 3D graph script encountered an error. Check application logs for details.");
+                }
                 proceso->deleteLater();
             });
 
-    proceso->start(pythonExecutable, args);
+    proceso->start(pythonExecutablePath, args);
     if (!proceso->waitForStarted(5000)) {
-        qCritical() << "Failed to start Python process.";
-        QMessageBox::critical(nullptr, "Process Error", "Failed to start Python script. Check Python executable path.");
+        qCritical() << "Failed to start Python process at:" << pythonExecutablePath;
+        QMessageBox::critical(nullptr, "Process Error", "Failed to start Python script. Check if Python environment is correctly packaged and path is correct.");
     }
 }
-
 
 
 QVector<QVector3D> SimplexSolver::calcularVerticesFactibles3D() {
