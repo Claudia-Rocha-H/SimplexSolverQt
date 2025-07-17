@@ -123,6 +123,22 @@ Contributions are welcome! I'm still working on this program and it has some bug
 
 This project is licensed under the MIT License.
 
+## Demos
+
+Below, you can find visual demonstrations of the program's functionality:
+
+### 2D Solution
+
+This animation illustrates how the solution is presented for a two-variable problem:
+
+![2D Solution Demonstration](media/simplex2D.gif "A quick demo of the SimplexSolver presenting a 2D solution tableau.")
+
+### 3D Visualization
+
+For problems involving three variables, a 3D graphical representation of the feasible region is generated:
+
+![3D Visualization Demonstration](media/simplex3D.gif "A demonstration of the SimplexSolver generating and displaying the 3D feasible region.")
+
 ## Contact
 
 Claudia Rocha  https://github.com/Claudia-Rocha-H/ email: rochaclaudia177@gmail.com
